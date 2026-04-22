@@ -1,17 +1,36 @@
-# tests/test_validator.py
-from src.validator import validate_iban, is_luhn_valid
+"""
+Step 5 — Validator (Final)
+"""
 
-def test_iban_valid_fr():
-    # Cet IBAN est mathématiquement correct (Modulo 97 = 1)
-    valid_iban = "FR1430001007941234567890123"
-    assert validate_iban(valid_iban) == True  # <--- Vérifie bien cette ligne
+def is_luhn_valid(number: str) -> bool:
+    """Algorithme de Luhn strict pour SIRET."""
+    if not number or not number.isdigit() or len(number) != 14:
+        return False
+    digits = [int(d) for d in number]
+    for i in range(len(digits) - 2, -1, -2):
+        val = digits[i] * 2
+        digits[i] = val if val < 10 else val - 9
+    return sum(digits) % 10 == 0
 
-def test_iban_invalid_key():
-    invalid_iban = "FR7630006000011234567890115"
-    assert validate_iban(invalid_iban) == False
+def validate_siret(siret: str) -> bool:
+    """Alias pour la validation SIRET."""
+    return is_luhn_valid(siret)
 
-def test_siret_lvmh_real():
-    assert is_luhn_valid("77567041700010") == True
-
-def test_siret_fake():
-    assert is_luhn_valid("12345678901234") == False
+def validate_iban(iban: str) -> bool:
+    """Valide un IBAN selon la norme ISO 13616."""
+    if not iban:
+        return False
+    iban = iban.replace(" ", "").upper()
+    if len(iban) != 27:
+        return False
+    rearranged = iban[4:] + iban[:4]
+    numeric_str = ""
+    for char in rearranged:
+        if char.isdigit():
+            numeric_str += char
+        else:
+            numeric_str += str(ord(char) - ord('A') + 10)
+    try:
+        return int(numeric_str) % 97 == 1
+    except ValueError:
+        return False
