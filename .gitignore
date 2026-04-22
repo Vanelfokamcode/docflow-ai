@@ -82,6 +82,36 @@ target/
 profile_default/
 ipython_config.py
 
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.env
+
+# --- Data & Storage (IMPORTANT) ---
+# On ignore les fichiers mais on garde la structure des dossiers
+data/raw/**/*.pdf
+data/processed/
+data/dataset.csv
+storage/*.joblib
+storage/*.db
+temp_*.pdf
+temp.pdf
+
+# --- IDEs ---
+.vscode/
+.idea/
+.DS_Store
+
+# --- Tests ---
+.pytest_cache/
+.coverage
+htmlcov/
+
+# --- Jupyter ---
+.ipynb_checkpoints
+
 # pyenv
 #   For a library or package, you might want to ignore these files since the code is
 #   intended to run in multiple environments; otherwise, check them in:
