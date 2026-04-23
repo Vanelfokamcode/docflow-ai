@@ -1,78 +1,69 @@
-"""
-Step 4 — Entity Extractor
-
-Ce module utilise les Expressions Régulières (Regex) pour extraire
-des données structurées spécifiques aux documents financiers.
-
-Regex utilisées :
-- SIRET : 14 chiffres (on gère les espaces)
-- IBAN : Format FR + 25 caractères
-- Montants : Nombres suivis du symbole monétaire
-"""
-
+# src/entity_extractor.py
 import re
 
 def extract_siret(text: str) -> str | None:
     """
-    Cherche un SIRET (14 chiffres) dans le texte.
-    On nettoie les espaces car les SIRET sont souvent écrits '123 456...'
+    Extrait un SIRET de 14 chiffres de manière flexible.
+    Gère : SIRET : 123 456..., SIRET 123.456..., SIRET:123456...
     """
     if not text:
         return None
     
-    # On cherche d'abord des séquences de chiffres avec des espaces
-    # ex: "432 345 678 00012"
-    potential_siret = re.findall(r'\d[\d\s]{13,20}\d', text)
+    # 1. Recherche par mot-clé (la plus fiable)
+    # On cherche "SIRET" suivi de n'importe quoi (espaces, :, -, .) puis 14 chiffres
+    pattern_keyword = r"SIRET\s*[:\-\s\.]*([\d\s\.\-]{14,25})"
+    match = re.search(pattern_keyword, text, re.IGNORECASE)
     
-    for s in potential_siret:
-        clean_s = re.sub(r'\s', '', s)
-        if len(clean_s) == 14:
-            return clean_s
+    if match:
+        # On extrait la partie numérique et on nettoie tout sauf les chiffres
+        raw_digits = match.group(1)
+        clean_digits = re.sub(r"[^\d]", "", raw_digits)
+        if len(clean_digits) >= 14:
+            return clean_digits[:14]
+
+    # 2. Recherche par bloc de 14 chiffres (si le mot SIRET est absent ou mal lu)
+    # On supprime d'abord les espaces dans le texte pour coller les chiffres
+    text_no_space = re.sub(r"\s", "", text)
+    all_14_digits = re.findall(r"\d{14}", text_no_space)
+    
+    for potential in all_14_digits:
+        # Ici, on pourrait ajouter une validation Luhn pour confirmer
+        return potential
+
     return None
 
 def extract_iban(text: str) -> str | None:
-    """
-    Cherche un IBAN français.
-    Format : FR + 2 chiffres + 23 caractères (souvent par blocs de 4)
-    """
+    """Extrait un IBAN français (FR + 25 carac)."""
     if not text:
         return None
-        
-    pattern = r'FR\d{2}[ ]\d{4}[ ]\d{4}[ ]\d{4}[ ]\d{4}[ ]\d{4}[ ]\d{3}'
-    # On cherche aussi la version sans espaces
-    pattern_no_space = r'FR\d{22,25}'
     
-    match = re.search(pattern, text) or re.search(pattern_no_space, text)
+    # Nettoyage des espaces pour la recherche
+    clean_text = text.replace(" ", "").replace("\n", "")
+    pattern = r"FR\d{2}[A-Z0-9]{23}"
+    match = re.search(pattern, clean_text)
     
     if match:
-        return match.group(0).replace(" ", "")
+        return match.group(0)
     return None
 
 def extract_amounts(text: str) -> list[float]:
+    """Extrait les montants financiers."""
     if not text:
         return []
-        
-    # Nouvelle Regex plus large : 
-    # - Cherche des nombres
-    # - Suivis de : €, EUR, Euros, M€, Md€ (milliards), ou Millions
-    pattern = r'(\d[\d\s,.]*)[\s]*(?:€|EUR|Euros|M€|Md€|millions|milliards)'
+    
+    # Cherche les chiffres suivis de € ou EUR
+    pattern = r"(\d[\d\s,.]*)[\s]*(?:€|EUR|Euros)"
     matches = re.findall(pattern, text, re.IGNORECASE)
     
-    found_amounts = []
+    found = []
     for m in matches:
         try:
-            clean_val = m.replace("\s", "").replace(",", ".").strip()
-            # On gère le cas des espaces insécables ou bizarres
-            clean_val = "".join(clean_val.split())
-            
-            if clean_val.count('.') > 1:
-                parts = clean_val.split('.')
-                clean_val = "".join(parts[:-1]) + "." + parts[-1]
-            
-            val = float(clean_val)
-            if val > 0: # On évite les zéros
-                found_amounts.append(val)
-        except ValueError:
+            # Nettoyage FR (1 250,50 -> 1250.50)
+            val = m.replace(" ", "").replace(",", ".")
+            if val.count('.') > 1:
+                parts = val.split('.')
+                val = "".join(parts[:-1]) + "." + parts[-1]
+            found.append(float(val))
+        except:
             continue
-            
-    return sorted(list(set(found_amounts)), reverse=True)
+    return sorted(list(set(found)), reverse=True)

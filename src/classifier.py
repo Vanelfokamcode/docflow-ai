@@ -1,46 +1,41 @@
-# src/classifier.py
 import pandas as pd
 import joblib
-from sklearn.model_selection import train_test_split
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.linear_model import LogisticRegression
-from sklearn.pipeline import Pipeline
-from sklearn.metrics import classification_report
-import os
+import re
+from pathlib import Path
 
-def train_model(csv_path="data/dataset.csv", model_path="storage/model.joblib"):
-    if not os.path.exists(csv_path):
-        print(f"Erreur : Le fichier {csv_path} n'existe pas. Lance d'abord scripts/prepare_ml_data.py")
-        return
+# On garde la fonction d'augmentation pour l'entraînement
+def augment_text_with_signals(text):
+    signals = []
+    text_upper = str(text).upper()
+    if "FACTURE" in text_upper or "INVOICE" in text_upper:
+        signals.append("FEATURE_KEYWORD_INVOICE")
+    if re.search(r"FR\d{2}[A-Z0-9]{23}", text_upper.replace(" ", "")):
+        signals.append("FEATURE_HAS_IBAN")
+    return " ".join(signals) + " " + str(text)
 
-    # 1. Charger les données
-    df = pd.read_csv(csv_path)
+def smart_predict(text, model):
+    """
+    Système de décision hybride (Règles Métier + Machine Learning).
+    C'est cette approche qui est utilisée en production bancaire.
+    """
+    text_upper = str(text).upper()
+    text_no_space = text_upper.replace(" ", "").replace("\n", "")
     
-    # 2. Séparer Entraînement / Test (80% / 20%)
-    # Correction ici : test_size et pas test_test_size
-    X_train, X_test, y_train, y_test = train_test_split(
-        df['text'], df['label'], test_size=0.2, random_state=42
-    )
+    # 🚩 RÈGLE D'OR 1 : Si on a un IBAN et le mot FACTURE -> C'est une facture.
+    has_iban = re.search(r"FR\d{2}[A-Z0-9]{23}", text_no_space)
+    has_invoice_keyword = "FACTURE" in text_upper or "INVOICE" in text_upper
     
-    # 3. Créer le Pipeline
-    pipeline = Pipeline([
-        ('tfidf', TfidfVectorizer(max_features=5000)),
-        ('clf', LogisticRegression(class_weight='balanced'))
-    ])
+    if has_iban and has_invoice_keyword:
+        return "facture", 0.99  # On force la décision avec 99% de confiance
     
-    # 4. Entraînement
-    print(f"Entraînement sur {len(X_train)} pages...")
-    pipeline.fit(X_train, y_train)
-    
-    # 5. Évaluation
-    y_pred = pipeline.predict(X_test)
-    print("\n--- RAPPORT DE PERFORMANCE ---")
-    print(classification_report(y_test, y_pred))
-    
-    # 6. Sauvegarde
-    os.makedirs("storage", exist_ok=True)
-    joblib.dump(pipeline, model_path)
-    print(f"✅ Modèle sauvegardé dans {model_path}")
+    # 🚩 RÈGLE D'OR 2 : Si c'est un Bulletin de Salaire Urssaf (mots clés spécifiques)
+    if "BULLETIN DESALAIRE" in text_no_space or "COTISATIONS SOCIALES" in text_upper:
+        return "bulletin_paie", 0.98
 
-if __name__ == "__main__":
-    train_model()
+    # 🚩 SINON : On laisse le modèle ML décider
+    text_augmented = augment_text_with_signals(text)
+    prediction = model.predict([text_augmented])[0]
+    probs = model.predict_proba([text_augmented])[0]
+    confidence = max(probs)
+    
+    return prediction, confidence
